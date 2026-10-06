@@ -1,0 +1,20 @@
+{
+  "name": "tender-scout",
+  "version": "1.0.0",
+  "description": "Daily Contracts Finder tender tracker: Google Sheets + Slack summary",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dry-run": "node src/index.js --dry-run"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "dotenv": "^18.0.5",
+    "googleapis": "^183.0.0"
+  }
+}
