@@ -21,6 +21,12 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          APOLLO_API_KEY: ${{ secrets.APOLLO_API_KEY }}
           KEYWORDS: ${{ vars.KEYWORDS }}
           CPV_PREFIXES: ${{ vars.CPV_PREFIXES }}
-          LOOKBACK_DAYS: ${{ vars.LOOKBACK_DAYS }}
+          AWARD_LOOKBACK_DAYS: ${{ vars.AWARD_LOOKBACK_DAYS }}
+          AWARD_MIN_GBP: ${{ vars.AWARD_MIN_GBP }}
+          TED_COUNTRIES: ${{ vars.TED_COUNTRIES }}
+          APOLLO_MAX_COMPANIES_PER_RUN: ${{ vars.APOLLO_MAX_COMPANIES_PER_RUN }}
+          APOLLO_CONTACTS_PER_COMPANY: ${{ vars.APOLLO_CONTACTS_PER_COMPANY }}
+          APOLLO_TITLES: ${{ vars.APOLLO_TITLES }}

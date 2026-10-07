@@ -1,27 +1,23 @@
 const fs = require('fs');
 const { google } = require('googleapis');
 
-const HEADERS = [
-  'Notice ID', 'Title', 'Buyer', 'Value', 'Deadline', 'Published',
-  'Region', 'CPV', 'Link', 'Status', 'First Seen', 'Revoked Date',
-];
-const COL = Object.fromEntries(HEADERS.map((h, i) => [h, i]));
-const LAST_COL = String.fromCharCode(65 + HEADERS.length - 1); // "L"
-
 function loadCredentials(raw) {
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not set');
   return JSON.parse(raw.trim().startsWith('{') ? raw : fs.readFileSync(raw, 'utf8'));
 }
 
-async function connect({ googleCredentials, sheetId, sheetTab }) {
+async function connect({ googleCredentials, sheetId }) {
   if (!sheetId) throw new Error('SHEET_ID is not set');
   const auth = new google.auth.GoogleAuth({
     credentials: loadCredentials(googleCredentials),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
-  const api = google.sheets({ version: 'v4', auth }).spreadsheets;
+  return { api: google.sheets({ version: 'v4', auth }).spreadsheets, sheetId };
+}
 
-  // Create the tab and header row on first run.
+// Creates the tab + header row on first use. Returns a handle for the other functions.
+async function openTab(conn, sheetTab, headers) {
+  const { api, sheetId } = conn;
   const meta = await api.get({ spreadsheetId: sheetId, fields: 'sheets.properties.title' });
   if (!meta.data.sheets.some((s) => s.properties.title === sheetTab)) {
     await api.batchUpdate({
@@ -29,59 +25,33 @@ async function connect({ googleCredentials, sheetId, sheetTab }) {
       requestBody: { requests: [{ addSheet: { properties: { title: sheetTab } } }] },
     });
   }
-  const header = await api.values.get({ spreadsheetId: sheetId, range: `${sheetTab}!A1:${LAST_COL}1` });
-  if (!header.data.values) {
+  const existing = await api.values.get({ spreadsheetId: sheetId, range: `'${sheetTab}'!A1:A1` });
+  if (!existing.data.values) {
     await api.values.update({
       spreadsheetId: sheetId,
-      range: `${sheetTab}!A1`,
+      range: `'${sheetTab}'!A1`,
       valueInputOption: 'RAW',
-      requestBody: { values: [HEADERS] },
+      requestBody: { values: [headers] },
     });
   }
-
-  return { api, sheetId, sheetTab };
+  return { ...conn, sheetTab };
 }
 
-// Returns [{ row (1-based sheet row), id, status }]
-async function readRows({ api, sheetId, sheetTab }) {
-  const res = await api.values.get({ spreadsheetId: sheetId, range: `${sheetTab}!A2:${LAST_COL}` });
-  return (res.data.values || [])
-    .map((r, i) => ({ row: i + 2, id: r[COL['Notice ID']], status: r[COL.Status] }))
-    .filter((r) => r.id);
+// Values of one column (below the header), e.g. existing IDs.
+async function readColumn({ api, sheetId, sheetTab }, col) {
+  const res = await api.values.get({ spreadsheetId: sheetId, range: `'${sheetTab}'!${col}2:${col}` });
+  return (res.data.values || []).map((r) => r[0]).filter(Boolean);
 }
 
-function toRow(n, today) {
-  return [
-    n.id, n.title, n.buyer, n.value, n.deadline.slice(0, 10), n.published.slice(0, 10),
-    n.region, n.cpv, n.url, 'Active', today, '',
-  ];
-}
-
-async function appendTenders({ api, sheetId, sheetTab }, tenders, today) {
-  if (!tenders.length) return;
+async function appendRows({ api, sheetId, sheetTab }, rows) {
+  if (!rows.length) return;
   await api.values.append({
     spreadsheetId: sheetId,
-    range: `${sheetTab}!A1`,
+    range: `'${sheetTab}'!A1`,
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: tenders.map((n) => toRow(n, today)) },
+    requestBody: { values: rows },
   });
 }
 
-// updates: [{ row, status, revokedDate }]
-async function setStatuses({ api, sheetId, sheetTab }, updates) {
-  if (!updates.length) return;
-  await api.values.batchUpdate({
-    spreadsheetId: sheetId,
-    requestBody: {
-      valueInputOption: 'RAW',
-      data: updates.map((u) => ({
-        range: `${sheetTab}!J${u.row}:L${u.row}`,
-        // Leaving First Seen (K) untouched by writing null.
-        values: [[u.status, null, u.revokedDate]],
-      })),
-    },
-  });
-}
-
-module.exports = { connect, readRows, appendTenders, setStatuses };
+module.exports = { connect, openTab, readColumn, appendRows };
