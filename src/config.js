@@ -78,13 +78,15 @@ module.exports = {
   ].join(',')),
 
   // Hiring velocity: daily poll of public job feeds (Workable, Lever) of every company found.
+  // Its tabs live in their own spreadsheet, optionally with their own service account;
+  // both fall back to the tender sheet/key.
+  hiringSheetId: process.env.HIRING_SHEET_ID || process.env.SHEET_ID,
+  hiringGoogleCredentials: process.env.HIRING_GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
   hiringCompaniesTab: process.env.HIRING_COMPANIES_TAB || 'Hiring Companies',
   hiringJobsTab: process.env.HIRING_JOBS_TAB || 'Hiring Jobs',
-  hiringSnapshotsTab: process.env.HIRING_SNAPSHOTS_TAB || 'Hiring Snapshots',
-  // One row per company per day that it is ramping up hiring.
-  hiringSpikesTab: process.env.HIRING_SPIKES_TAB || 'Hiring Spikes',
-  // Pause between requests; Workable allows about one request per second.
-  hiringDelayMs: Number(process.env.HIRING_DELAY_MS || 1000),
+  // Pause between requests. Workable takes bursts at ~1/s but rate-limits that pace after
+  // a few hundred requests, so the default stays well under it.
+  hiringDelayMs: Number(process.env.HIRING_DELAY_MS || 2000),
 
   // Workable companies are found automatically: each run searches jobs.workable.com for these
   // queries in these locations and starts tracking any new hiring company.
@@ -92,7 +94,7 @@ module.exports = {
   workableQueries: list(process.env.WORKABLE_QUERIES, 'software engineer,developer,devops,data engineer,engineering manager'),
   workableSearchPages: Number(process.env.WORKABLE_SEARCH_PAGES || 10),
   // New companies looked up per run (each costs up to 4 requests); the rest wait for the next run.
-  workableMaxNewPerRun: Number(process.env.WORKABLE_MAX_NEW_PER_RUN || 150),
+  workableMaxNewPerRun: Number(process.env.WORKABLE_MAX_NEW_PER_RUN || 60),
 
   // Lever has no cross-company search. Companies come from tender award winners (checked
   // for a Lever page) plus these starter slugs (jobs.lever.co/<slug>).

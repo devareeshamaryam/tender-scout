@@ -2,7 +2,7 @@
 // in the 'Hiring Companies' tab, and a company stays tracked once found.
 // - Workable: search jobs.workable.com for engineering jobs in the configured locations.
 // - Lever (no cross-company search): starter slugs from config, plus every tender award
-//   winner in the awards tab checked for a Lever page.
+//   winner in the awards tab of the tender sheet checked for a Lever page.
 
 const config = require('./config');
 const workable = require('./sources/workable');
@@ -11,8 +11,21 @@ const { cleanCompanyName } = require('./apollo');
 const sheets = require('./sheets');
 const { sleep } = require('./http');
 
-const HEADERS = ['ATS', 'Slug', 'Company', 'Status', 'Website', 'Source ID', 'First Found', 'Found Via'];
+// Columns A-H describe how the company was found; I-P are refreshed by every run.
+const HEADERS = [
+  'ATS', 'Slug', 'Company', 'Status', 'Website', 'Source ID', 'First Found', 'Found Via',
+  'Open Jobs', 'Open Engineering', 'New Engineering Jobs (7 days)', 'Hiring Trend', 'Top Stacks',
+  'Last Spike', 'Last Checked', 'Engineering History',
+];
+const COL = Object.fromEntries(HEADERS.map((h, i) => [h, i]));
 const TRACKED = 'tracked';
+// Days of open-engineering counts kept in the Engineering History cell.
+const HISTORY_DAYS = 60;
+
+// "2026-10-07:4; 2026-10-08:6" <-> [{ date, openEng }]
+const parseHistory = (cell) => (cell || '').split('; ').filter(Boolean)
+  .map((e) => e.split(':')).map(([date, n]) => ({ date, openEng: Number(n) || 0 }));
+const formatHistory = (entries) => entries.slice(-HISTORY_DAYS).map((h) => `${h.date}:${h.openEng}`).join('; ');
 
 const squash = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
 
@@ -99,7 +112,7 @@ async function awardWinners(conn) {
 
 // Finds new companies, stores them (unless dryRun) and returns the companies to poll:
 // [{ ats, slug, company }]. A rate-limit block during discovery doesn't stop the run.
-async function update(conn, today, { dryRun = false } = {}) {
+async function update(conn, today, { dryRun = false, awardsConn = null } = {}) {
   let tab = null;
   let rows = [];
   if (conn && !dryRun) {
@@ -109,7 +122,9 @@ async function update(conn, today, { dryRun = false } = {}) {
     rows = await sheets.readRows({ ...conn, sheetTab: config.hiringCompaniesTab }).catch(() => []);
   }
   const knownIds = new Set(rows.map((r) => `${r[0]}:${r[5]}`));
-  const tracked = new Map(rows.filter((r) => r[3] === TRACKED).map((r) => [`${r[0]}:${r[1]}`, { ats: r[0], slug: r[1], company: r[2] }]));
+  const tracked = new Map(rows.filter((r) => r[COL.Status] === TRACKED).map((r) => [`${r[0]}:${r[1]}`, {
+    ats: r[0], slug: r[1], company: r[2], history: parseHistory(r[COL['Engineering History']]), lastSpike: r[COL['Last Spike']] || '',
+  }]));
   const slugsOf = (ats) => new Set([...tracked.values()].filter((t) => t.ats === ats).map((t) => t.slug));
   const limit = (n) => (dryRun ? Math.min(n, 10) : n);
 
@@ -123,7 +138,7 @@ async function update(conn, today, { dryRun = false } = {}) {
   const record = async (ats, slug, company, status, website, sourceId, via) => {
     if (status === TRACKED) {
       console.log(`+ ${ats} ${slug} (${company})`);
-      tracked.set(`${ats}:${slug}`, { ats, slug, company });
+      tracked.set(`${ats}:${slug}`, { ats, slug, company, history: [], lastSpike: '' });
       added++;
     }
     knownIds.add(`${ats}:${sourceId}`);
@@ -153,7 +168,7 @@ async function update(conn, today, { dryRun = false } = {}) {
       const name = slug.charAt(0).toUpperCase() + slug.slice(1);
       await record(lever.name, status === TRACKED ? slug : '', name, status, '', `starter:${slug}`, 'starter list');
     }
-    const winners = conn ? (await awardWinners(conn)).filter((n) => !knownIds.has(`${lever.name}:tender:${squash(n)}`)) : [];
+    const winners = awardsConn ? (await awardWinners(awardsConn)).filter((n) => !knownIds.has(`${lever.name}:tender:${squash(n)}`)) : [];
     for (const name of winners.slice(0, limit(config.leverMaxNewPerRun))) {
       const [slug, status] = await resolveLever(name, slugs);
       if (slug) slugs.add(slug);
@@ -169,4 +184,24 @@ async function update(conn, today, { dryRun = false } = {}) {
   return { companies: list, newCompanies: added };
 }
 
-module.exports = { update };
+// Writes today's numbers into each polled company's row. stats: Map "ATS:slug" ->
+// { openJobs, openEng, newEng7, trend, topStacks, spiked, history: [{ date, openEng }] }
+async function saveStats(conn, stats, today) {
+  const tab = { ...conn, sheetTab: config.hiringCompaniesTab };
+  const rows = (await sheets.readRows(tab)).map((r) => HEADERS.map((_, i) => r[i] ?? ''));
+  for (const r of rows) {
+    const s = stats.get(`${r[0]}:${r[1]}`);
+    if (!s) continue;
+    r[COL['Open Jobs']] = s.openJobs;
+    r[COL['Open Engineering']] = s.openEng;
+    r[COL['New Engineering Jobs (7 days)']] = s.newEng7;
+    r[COL['Hiring Trend']] = s.trend;
+    r[COL['Top Stacks']] = s.topStacks;
+    if (s.spiked) r[COL['Last Spike']] = today;
+    r[COL['Last Checked']] = today;
+    r[COL['Engineering History']] = formatHistory(s.history);
+  }
+  await sheets.writeAll(tab, HEADERS, rows);
+}
+
+module.exports = { update, saveStats, HEADERS };

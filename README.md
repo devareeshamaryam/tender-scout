@@ -55,7 +55,7 @@ A second daily job (`npm run hiring`) watches **which companies are ramping up e
 | Lever | `https://api.lever.co/v0/postings/<slug>?mode=json` |
 
 **There is no list to maintain.** Companies are found automatically, saved in the **Hiring Companies** tab, and stay tracked once found:
-- **Workable:** each run searches the public Workable job board (jobs.workable.com) for `WORKABLE_QUERIES` (software engineer, developer, devops, data engineer, engineering manager) in `WORKABLE_LOCATIONS` (default United Kingdom). It works out each newly seen company's slug and checks it against the live feed. At most `WORKABLE_MAX_NEW_PER_RUN` (150) new companies are looked up per run, and the rest follow later.
+- **Workable:** each run searches the public Workable job board (jobs.workable.com) for `WORKABLE_QUERIES` (software engineer, developer, devops, data engineer, engineering manager) in `WORKABLE_LOCATIONS` (default United Kingdom). It works out each newly seen company's slug and checks it against the live feed. At most `WORKABLE_MAX_NEW_PER_RUN` (60) new companies are looked up per run, and the rest follow later.
 - **Lever** has no cross-company job search. Instead, every tender award winner in the Award Signals tab is checked for a Lever page (`LEVER_MAX_NEW_PER_RUN`, 100 per run). The `LEVER_COMPANIES` starter slugs are also tracked: Palantir, Spotify, Zopa, Scott Logic, Veeva, SonarSource, Shield AI, Outreach and DNB.
 
 If a job site rate-limits the search, the run still polls the companies it already tracks.
@@ -78,11 +78,9 @@ A company is reported when something relevant was posted **today** and at least 
 
 A job counts as engineering if one of `ENGINEERING_KEYWORDS` (engineer, developer, devops, SRE, architect, QA, frontend/backend, mobile…) is in its title, department or function. A company's **first** poll only sets its baseline, so a newly found company doesn't cause a false alert.
 
-**Sheet tabs** (every row has an ATS column: Workable or Lever):
-- **Hiring Spikes**: only the companies that are ramping up, one row per company per day. Columns: Date, ATS, Company, Why (spike / burst / stack), Engineering Jobs Before → Now, New Engineering Jobs (7 days), Hot Stacks, Latest Jobs, Careers Page.
-- **Hiring Companies**: every company found, with Status `tracked`, `no Workable page found`, `no Lever page found` or `same as <slug>`, plus First Found and Found Via (search query, starter list or tender award winner).
+**Sheet tabs**: the hiring data lives in its own spreadsheet (`HIRING_SHEET_ID`) and has two tabs. Every row has an ATS column (Workable or Lever).
+- **Hiring Companies**: one row per company found. Status is `tracked`, `no Workable page found`, `no Lever page found` or `same as <slug>`, with First Found and Found Via (search query, starter list or tender award winner). Every run updates each tracked company's Open Jobs, Open Engineering, New Engineering Jobs (7 days), **Hiring Trend**, Top Stacks, Last Spike and Last Checked. Hiring Trend is filled on days the company is ramping up, e.g. "📈 Engineering jobs 10 → 16; 6 new engineering jobs in 7 days". **Engineering History** holds the daily open-engineering counts (last 60 days) that the spike rule compares against.
 - **Hiring Jobs**: every job ever seen, with Engineering Y/N, matched Stacks, First Seen, and New (N = existed on the company's first poll).
-- **Hiring Snapshots**: one row per company per day, with Open Jobs, Open Engineering, New Jobs, New Engineering and New Stacks. These rows are the history the spike rule uses.
 
 Tracked companies whose careers page later disappears are listed in Slack as "Careers page no longer found".
 

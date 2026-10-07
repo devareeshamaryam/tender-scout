@@ -49,6 +49,16 @@ async function readRows({ api, sheetId, sheetTab }) {
   return res.data.values || [];
 }
 
+// Overwrites the header row and every row below it (rows keep their order).
+async function writeAll({ api, sheetId, sheetTab }, headers, rows) {
+  await api.values.update({
+    spreadsheetId: sheetId,
+    range: `'${sheetTab}'!A1`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [headers, ...rows] },
+  });
+}
+
 async function appendRows({ api, sheetId, sheetTab }, rows) {
   if (!rows.length) return;
   await api.values.append({
@@ -60,4 +70,4 @@ async function appendRows({ api, sheetId, sheetTab }, rows) {
   });
 }
 
-module.exports = { connect, openTab, readColumn, readRows, appendRows };
+module.exports = { connect, openTab, readColumn, readRows, writeAll, appendRows };

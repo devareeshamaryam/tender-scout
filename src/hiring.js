@@ -20,17 +20,6 @@ const JOB_HEADERS = [
   'Published On', 'First Seen', 'New', 'URL',
 ];
 
-const SNAPSHOT_HEADERS = [
-  'Date', 'ATS', 'Company', 'Slug', 'Open Jobs', 'Open Engineering', 'New Jobs', 'New Engineering', 'New Stacks',
-];
-
-const SPIKE_HEADERS = [
-  'Date', 'ATS', 'Company', 'Slug', 'Why', 'Engineering Jobs Before', 'Engineering Jobs Now',
-  'New Engineering Jobs (7 days)', 'Hot Stacks', 'Latest Jobs', 'Careers Page',
-];
-
-const REASONS = { spike: 'Engineering jobs spiked', burst: 'Burst of new engineering jobs', stack: 'Stack in demand' };
-
 const keyOf = (ats, slug) => `${ats}:${slug}`;
 
 // Error bodies can be whole HTML pages - keep Slack to a short reason.
@@ -52,7 +41,9 @@ async function fetchAll(tracked) {
     if (!source) continue;
     try {
       const feed = await source.fetchJobs(t.slug);
-      companies.push({ ...feed, ats: t.ats, company: t.company || feed.company, careersUrl: source.careersUrl(t.slug) });
+      companies.push({
+        ...feed, ats: t.ats, company: t.company || feed.company, careersUrl: source.careersUrl(t.slug), history: t.history || [],
+      });
     } catch (err) {
       if (/ 404:/.test(err.message)) {
         notFound.push(`${t.slug} (${t.ats})`);
@@ -95,27 +86,21 @@ function groupBy(items, keyFn) {
   return map;
 }
 
-// Only the companies that are ramping up, one row each per day (re-runs don't duplicate).
-async function saveSpikes(conn, alerts, today) {
-  const tab = await sheets.openTab(conn, config.hiringSpikesTab, SPIKE_HEADERS);
-  const done = new Set((await sheets.readRows(tab)).filter((r) => r[0] === today).map((r) => keyOf(r[1], r[3])));
-  await sheets.appendRows(tab, alerts.filter((a) => !done.has(keyOf(a.ats, a.slug))).map((a) => [
-    today, a.ats, a.company, a.slug,
-    a.reasons.map((r) => REASONS[r]).join('; '),
-    a.baseline ?? '', a.openEng, a.newEng,
-    a.hotStacks.map(([s, n]) => `${s}:${n}`).join('; '),
-    a.latest.map((j) => `${j.title} ${j.url}`.trim()).join('\n'),
-    a.careersUrl,
-  ]));
+// Text for the Hiring Trend column, e.g. "📈 Engineering jobs 10 → 16; 6 new engineering jobs in 7 days".
+function describe(alert) {
+  if (!alert) return '';
+  const parts = [];
+  if (alert.reasons.includes('spike')) parts.push(`Engineering jobs ${alert.baseline} → ${alert.openEng}`);
+  if (alert.reasons.includes('burst') || alert.newEng) parts.push(`${alert.newEng} new engineering jobs in 7 days`);
+  if (alert.hotStacks.length) parts.push(`in demand: ${alert.hotStacks.slice(0, 3).map(([s, n]) => `${s} ×${n}`).join(', ')}`);
+  return `📈 ${parts.join('; ')}`;
 }
 
-// Records today's jobs + snapshots and returns the companies that are ramping up.
+// Records today's new jobs and each company's numbers; returns the companies ramping up.
 // A company's first poll only sets its baseline: those jobs are stored with New = N.
 async function track(conn, companies, today) {
   const jobsTab = await sheets.openTab(conn, config.hiringJobsTab, JOB_HEADERS);
-  const snapTab = await sheets.openTab(conn, config.hiringSnapshotsTab, SNAPSHOT_HEADERS);
   const jobRows = await sheets.readRows(jobsTab);
-  const snapRows = await sheets.readRows(snapTab);
 
   const knownJobs = new Set(jobRows.map((r) => keyOf(r[0], r[3])));
   const since = daysAgo(today, 6);
@@ -124,16 +109,15 @@ async function track(conn, companies, today) {
     .map((r) => ({
       key: keyOf(r[0], r[2]), title: r[4], engineering: r[7] === 'Y', stacks: r[8] ? r[8].split(', ') : [], firstSeen: r[10], url: r[12] || '',
     })), (j) => j.key);
-  const history = groupBy(snapRows.map((r) => ({ key: keyOf(r[1], r[3]), date: r[0], openEng: Number(r[5]) || 0 })), (h) => h.key);
 
   const newJobRows = [];
-  const newSnapRows = [];
+  const stats = new Map();
   const alerts = [];
   let newJobs = 0;
   let baselined = 0;
   for (const c of companies) {
     const key = keyOf(c.ats, c.slug);
-    const firstPoll = !history.has(key);
+    const firstPoll = !c.history.length;
     if (firstPoll) baselined++;
     const added = c.jobs.filter((j) => !knownJobs.has(keyOf(c.ats, j.id)));
     added.forEach((j) => knownJobs.add(keyOf(c.ats, j.id)));
@@ -145,33 +129,37 @@ async function track(conn, companies, today) {
     const fresh = firstPoll ? [] : added;
     newJobs += fresh.length;
     const openEng = c.jobs.filter((j) => j.engineering).length;
-    if (!(history.get(key) || []).some((h) => h.date === today)) {
-      newSnapRows.push([today, c.ats, c.company, c.slug, c.jobs.length, openEng, fresh.length,
-        fresh.filter((j) => j.engineering).length, stackSummary(fresh)]);
-    }
-
-    const alert = detect({
-      today,
-      openEng,
-      history: history.get(key) || [],
-      recentNew: [...(recentNew.get(key) || []), ...fresh.map((j) => ({ ...j, firstSeen: today }))],
-    }, config);
+    const recent = [...(recentNew.get(key) || []), ...fresh.map((j) => ({ ...j, firstSeen: today }))];
+    const alert = detect({ today, openEng, history: c.history, recentNew: recent }, config);
     if (alert) alerts.push({ ats: c.ats, company: c.company, slug: c.slug, careersUrl: c.careersUrl, ...alert });
+
+    stats.set(key, {
+      openJobs: c.jobs.length,
+      openEng,
+      newEng7: recent.filter((j) => j.engineering).length,
+      trend: describe(alert),
+      topStacks: stackSummary(c.jobs.filter((j) => j.engineering)).split('; ').slice(0, 5).join('; '),
+      spiked: !!alert,
+      // Re-runs on the same day replace today's entry.
+      history: [...c.history.filter((h) => h.date !== today), { date: today, openEng }],
+    });
   }
 
   await sheets.appendRows(jobsTab, newJobRows);
-  await sheets.appendRows(snapTab, newSnapRows);
+  await companiesFinder.saveStats(conn, stats, today);
   alerts.sort((a, b) => (b.newEng + b.openEng - (b.baseline ?? b.openEng)) - (a.newEng + a.openEng - (a.baseline ?? a.openEng)));
-  await saveSpikes(conn, alerts, today);
   console.log(`Hiring: ${newJobs} new jobs, ${baselined} companies baselined, ${alerts.length} alerts`);
-  return { alerts, newJobs, baselined, firstRun: snapRows.length === 0 };
+  return { alerts, newJobs, baselined, firstRun: companies.every((c) => !c.history.length) };
 }
 
 async function main() {
   const today = new Date().toISOString().slice(0, 10);
   // Dry runs work without Google credentials, try at most 10 new companies per source and write nothing.
-  const conn = !config.dryRun || (config.googleCredentials && config.sheetId) ? await sheets.connect(config) : null;
-  const { companies: tracked, newCompanies } = await companiesFinder.update(conn, today, { dryRun: config.dryRun });
+  const hiringSheet = { googleCredentials: config.hiringGoogleCredentials, sheetId: config.hiringSheetId };
+  const conn = !config.dryRun || (hiringSheet.googleCredentials && hiringSheet.sheetId) ? await sheets.connect(hiringSheet) : null;
+  // Tender award winners (checked for Lever pages) are in the tender sheet.
+  const awardsConn = config.googleCredentials && config.sheetId ? await sheets.connect(config).catch(() => null) : null;
+  const { companies: tracked, newCompanies } = await companiesFinder.update(conn, today, { dryRun: config.dryRun, awardsConn });
   if (!tracked.length) throw new Error('No companies found to track');
   console.log(`Polling ${tracked.length} companies...`);
   const { companies, notFound, errors } = await fetchAll(tracked);
@@ -204,7 +192,7 @@ async function main() {
     date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     ...result,
     ...totals,
-    sheetUrl: `https://docs.google.com/spreadsheets/d/${config.sheetId}`,
+    sheetUrl: `https://docs.google.com/spreadsheets/d/${config.hiringSheetId}`,
   }));
 
   if (errors.length) process.exitCode = 1;

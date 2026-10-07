@@ -44,6 +44,9 @@ jobs:
       - run: npm ci
       - run: npm run hiring
         env:
+          # Hiring tabs go to their own sheet; the tender sheet is still read for award winners.
+          HIRING_GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.HIRING_GOOGLE_SERVICE_ACCOUNT_JSON }}
+          HIRING_SHEET_ID: ${{ secrets.HIRING_SHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
