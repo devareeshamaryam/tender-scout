@@ -30,3 +30,34 @@ jobs:
           APOLLO_MAX_COMPANIES_PER_RUN: ${{ vars.APOLLO_MAX_COMPANIES_PER_RUN }}
           APOLLO_CONTACTS_PER_COMPANY: ${{ vars.APOLLO_CONTACTS_PER_COMPANY }}
           APOLLO_TITLES: ${{ vars.APOLLO_TITLES }}
+
+  # Independent of the tender job: one failing doesn't stop the other.
+  hiring:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90   # first runs look up many new companies at ~1 request/second
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run hiring
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          WORKABLE_LOCATIONS: ${{ vars.WORKABLE_LOCATIONS }}
+          WORKABLE_QUERIES: ${{ vars.WORKABLE_QUERIES }}
+          WORKABLE_SEARCH_PAGES: ${{ vars.WORKABLE_SEARCH_PAGES }}
+          WORKABLE_MAX_NEW_PER_RUN: ${{ vars.WORKABLE_MAX_NEW_PER_RUN }}
+          LEVER_COMPANIES: ${{ vars.LEVER_COMPANIES }}
+          LEVER_MAX_NEW_PER_RUN: ${{ vars.LEVER_MAX_NEW_PER_RUN }}
+          AWARDS_TAB: ${{ vars.AWARDS_TAB }}
+          ENGINEERING_KEYWORDS: ${{ vars.ENGINEERING_KEYWORDS }}
+          STACKS: ${{ vars.STACKS }}
+          SPIKE_RATIO: ${{ vars.SPIKE_RATIO }}
+          SPIKE_MIN_INCREASE: ${{ vars.SPIKE_MIN_INCREASE }}
+          BASELINE_DAYS: ${{ vars.BASELINE_DAYS }}
+          BURST_MIN_NEW_ENG: ${{ vars.BURST_MIN_NEW_ENG }}
+          STACK_SPIKE_MIN: ${{ vars.STACK_SPIKE_MIN }}

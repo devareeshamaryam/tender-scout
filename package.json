@@ -9,7 +9,9 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "dry-run": "node src/index.js --dry-run"
+    "dry-run": "node src/index.js --dry-run",
+    "hiring": "node src/hiring.js",
+    "hiring:dry-run": "node src/hiring.js --dry-run"
   },
   "license": "UNLICENSED",
   "private": true,

@@ -45,11 +45,63 @@ Each supplier is looked up **once ever**. "No match" results are recorded too, s
 
 > These are personal data (UK GDPR / PECR). Keep the sheet access-restricted, and review contacts before anyone sends outreach.
 
+## Hiring velocity (Workable + Lever)
+
+A second daily job (`npm run hiring`) watches **which companies are ramping up engineering hiring**. Every day it reads the public, keyless job feed of each company it tracks, one request per second:
+
+| ATS | Job feed (one request per company) |
+|---|---|
+| Workable | `https://apply.workable.com/api/v1/widget/accounts/<slug>?details=true` |
+| Lever | `https://api.lever.co/v0/postings/<slug>?mode=json` |
+
+**There is no list to maintain.** Companies are found automatically, saved in the **Hiring Companies** tab, and stay tracked once found:
+- **Workable:** each run searches the public Workable job board (jobs.workable.com) for `WORKABLE_QUERIES` (software engineer, developer, devops, data engineer, engineering manager) in `WORKABLE_LOCATIONS` (default United Kingdom). It works out each newly seen company's slug and checks it against the live feed. At most `WORKABLE_MAX_NEW_PER_RUN` (150) new companies are looked up per run, and the rest follow later.
+- **Lever** has no cross-company job search. Instead, every tender award winner in the Award Signals tab is checked for a Lever page (`LEVER_MAX_NEW_PER_RUN`, 100 per run). The `LEVER_COMPANIES` starter slugs are also tracked: Palantir, Spotify, Zopa, Scott Logic, Veeva, SonarSource, Shield AI, Outreach and DNB.
+
+If a job site rate-limits the search, the run still polls the companies it already tracks.
+
+```
+TenderScout – hiring velocity – 07 Oct 2026
+
+📈 Companies ramping up engineering hiring: 2
+• Zopa (Lever) – engineering roles 10 → 16 · 6 new eng jobs in 7 days · stacks: kotlin ×4, aws ×3
+    ↳ Senior Backend Engineer, Android Engineer, Platform Engineer
+```
+
+A company is reported when something relevant was posted **today** and at least one of these is true:
+
+| Rule | Default |
+|---|---|
+| **Spike:** open engineering jobs ≥ `SPIKE_RATIO` × baseline **and** up by ≥ `SPIKE_MIN_INCREASE`. The baseline is the median of the last `BASELINE_DAYS` daily snapshots and needs at least 3 days of history. | 1.5×, +3, 14 days |
+| **Burst:** ≥ `BURST_MIN_NEW_ENG` new engineering jobs in the last 7 days | 5 |
+| **Stack:** ≥ `STACK_SPIKE_MIN` new jobs naming the same tech stack (title or description) in the last 7 days | 3 |
+
+A job counts as engineering if one of `ENGINEERING_KEYWORDS` (engineer, developer, devops, SRE, architect, QA, frontend/backend, mobile…) is in its title, department or function. A company's **first** poll only sets its baseline, so a newly found company doesn't cause a false alert.
+
+**Sheet tabs** (every row has an ATS column: Workable or Lever):
+- **Hiring Spikes**: only the companies that are ramping up, one row per company per day. Columns: Date, ATS, Company, Why (spike / burst / stack), Engineering Jobs Before → Now, New Engineering Jobs (7 days), Hot Stacks, Latest Jobs, Careers Page.
+- **Hiring Companies**: every company found, with Status `tracked`, `no Workable page found`, `no Lever page found` or `same as <slug>`, plus First Found and Found Via (search query, starter list or tender award winner).
+- **Hiring Jobs**: every job ever seen, with Engineering Y/N, matched Stacks, First Seen, and New (N = existed on the company's first poll).
+- **Hiring Snapshots**: one row per company per day, with Open Jobs, Open Engineering, New Jobs, New Engineering and New Stacks. These rows are the history the spike rule uses.
+
+Tracked companies whose careers page later disappears are listed in Slack as "Careers page no longer found".
+
+```bash
+npm run hiring:dry-run        # search + up to 10 new companies, writes nothing: prints top companies by open engineering jobs
+npm run hiring                # real run: sheet + Slack
+```
+
 ## Code
 
 ```
 src/
   index.js                    fetch awards → filter → sheet → Apollo → Slack
+  hiring.js                   tracked companies → job feeds → jobs/snapshots in sheet → spike alerts → Slack
+  velocity.js                 spike / burst / stack rules
+  companies.js                finds companies to track (Hiring Companies tab)
+  sources/workable.js         Workable job feeds + job search
+  sources/lever.js            Lever job feeds
+  text.js                     HTML → plain text for job descriptions
   config.js                   settings from environment / .env
   sources/contractsFinder.js  Contracts Finder award notices
   sources/findTender.js       Find a Tender award notices
@@ -60,7 +112,7 @@ src/
   sheets.js                   Google Sheets helpers
   slack.js                    Slack message
   http.js                     request helper (retries rate limits and network errors)
-.github/workflows/daily.yml   runs every day at 07:00 UTC
+.github/workflows/daily.yml   runs both jobs every day at 07:00 UTC
 ```
 
 ## Setup

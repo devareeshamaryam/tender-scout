@@ -34,6 +34,42 @@ function buildReport({ date, awards, hiring, sheetUrl }) {
   return lines.join('\n');
 }
 
+const num = (n) => new Intl.NumberFormat('en-GB').format(n);
+
+function hiringAlertLine(a) {
+  const facts = [];
+  if (a.reasons.includes('spike')) facts.push(`engineering roles *${a.baseline} → ${a.openEng}*`);
+  else facts.push(`${a.openEng} open engineering roles`);
+  if (a.newEng) facts.push(`${a.newEng} new eng jobs in 7 days`);
+  if (a.hotStacks.length) facts.push(`stacks: ${a.hotStacks.slice(0, 4).map(([s, n]) => `${escape(s)} ×${n}`).join(', ')}`);
+  const jobs = a.latest.map((j) => (j.url ? `<${j.url}|${escape(j.title.slice(0, 60))}>` : escape(j.title.slice(0, 60))));
+  return [
+    `• *<${a.careersUrl}|${escape(a.company)}>* (${a.ats}) – ${facts.join(' · ')}`,
+    ...(jobs.length ? [`    ↳ ${jobs.join(', ')}`] : []),
+  ].join('\n');
+}
+
+function buildHiringReport({ date, alerts, firstRun, baselined, newJobs, polled, perAts = [], openJobs, openEng, newCompanies, notFound, errors, sheetUrl }) {
+  const lines = [`*TenderScout – hiring velocity – ${date}*`, ''];
+  if (firstRun) {
+    lines.push(`📥 Initial load: baselined *${baselined}* companies. Alerts start as new jobs are posted (spike alerts after 3 days of history).`);
+  } else if (alerts.length) {
+    lines.push(`📈 Companies ramping up engineering hiring: *${alerts.length}*`);
+    lines.push(...alerts.slice(0, MAX_LISTED).map(hiringAlertLine));
+    if (alerts.length > MAX_LISTED) lines.push(`…and ${alerts.length - MAX_LISTED} more`);
+  } else {
+    lines.push('No hiring spikes today.');
+  }
+  const split = perAts.length > 1 ? ` (${perAts.map(([ats, n]) => `${ats} ${n}`).join(', ')})` : '';
+  lines.push('', `Companies tracked: *${polled}*${split}    Open jobs: *${num(openJobs)}* (engineering ${num(openEng)})    New jobs today: *${num(newJobs)}*`);
+  if (newCompanies) lines.push(`🔎 ${newCompanies} new hiring companies found and added to tracking`);
+  if (!firstRun && baselined) lines.push(`➕ ${baselined} companies baselined (first poll, alerts from tomorrow)`);
+  if (notFound.length) lines.push(`⚠️ Careers page no longer found: ${escape(notFound.join(', '))}`);
+  if (errors.length) lines.push(`⚠️ ${errors.length} companies failed: ${escape(errors.slice(0, 3).join('; '))}`);
+  if (sheetUrl) lines.push('', `<${sheetUrl}|Open Google Sheet>`);
+  return lines.join('\n');
+}
+
 async function post(webhookUrl, text) {
   if (!webhookUrl) {
     console.log('SLACK_WEBHOOK_URL not set, message would be:\n' + text);
@@ -47,4 +83,4 @@ async function post(webhookUrl, text) {
   if (!res.ok) throw new Error(`Slack ${res.status}: ${await res.text()}`);
 }
 
-module.exports = { buildReport, post };
+module.exports = { buildReport, buildHiringReport, post };

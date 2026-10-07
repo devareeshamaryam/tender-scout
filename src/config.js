@@ -24,6 +24,22 @@ const DEFAULT_KEYWORDS = [
   'automation', 'it infrastructure', 'digital transformation', 'software testing',
 ].join(',');
 
+// "development" alone is left out: it matches "business development".
+const DEFAULT_ENGINEERING_KEYWORDS = [
+  'engineer', 'engineers', 'engineering', 'developer', 'developers', 'software', 'programmer',
+  'devops', 'devsecops', 'sre', 'site reliability', 'architect', 'data scientist', 'machine learning',
+  'qa', 'tester', 'test automation', 'sdet', 'frontend', 'front-end', 'front end', 'backend',
+  'back-end', 'back end', 'full stack', 'full-stack', 'fullstack', 'mobile', 'ios', 'android',
+  'tech lead', 'technical lead', 'cto', 'r&d',
+].join(',');
+
+const DEFAULT_STACKS = [
+  'python', 'java', 'javascript', 'typescript', 'node.js', 'nodejs', 'react', 'angular', 'vue',
+  'golang', 'rust', '.net', 'c#', 'c++', 'php', 'ruby', 'kotlin', 'swift', 'scala',
+  'aws', 'azure', 'gcp', 'kubernetes', 'docker', 'terraform',
+  'spark', 'snowflake', 'databricks', 'machine learning', 'llm',
+].join(',');
+
 module.exports = {
   dryRun: process.argv.includes('--dry-run'),
 
@@ -60,4 +76,40 @@ module.exports = {
     'head of people', 'hr director', 'delivery director', 'head of delivery',
     'head of engineering', 'engineering manager', 'cto',
   ].join(',')),
+
+  // Hiring velocity: daily poll of public job feeds (Workable, Lever) of every company found.
+  hiringCompaniesTab: process.env.HIRING_COMPANIES_TAB || 'Hiring Companies',
+  hiringJobsTab: process.env.HIRING_JOBS_TAB || 'Hiring Jobs',
+  hiringSnapshotsTab: process.env.HIRING_SNAPSHOTS_TAB || 'Hiring Snapshots',
+  // One row per company per day that it is ramping up hiring.
+  hiringSpikesTab: process.env.HIRING_SPIKES_TAB || 'Hiring Spikes',
+  // Pause between requests; Workable allows about one request per second.
+  hiringDelayMs: Number(process.env.HIRING_DELAY_MS || 1000),
+
+  // Workable companies are found automatically: each run searches jobs.workable.com for these
+  // queries in these locations and starts tracking any new hiring company.
+  workableLocations: list(process.env.WORKABLE_LOCATIONS, 'United Kingdom'),
+  workableQueries: list(process.env.WORKABLE_QUERIES, 'software engineer,developer,devops,data engineer,engineering manager'),
+  workableSearchPages: Number(process.env.WORKABLE_SEARCH_PAGES || 10),
+  // New companies looked up per run (each costs up to 4 requests); the rest wait for the next run.
+  workableMaxNewPerRun: Number(process.env.WORKABLE_MAX_NEW_PER_RUN || 150),
+
+  // Lever has no cross-company search. Companies come from tender award winners (checked
+  // for a Lever page) plus these starter slugs (jobs.lever.co/<slug>).
+  leverCompanies: list(process.env.LEVER_COMPANIES, 'palantir,spotify,zopa,scottlogic,veeva,sonarsource,shieldai,outreach,dnb'),
+  // Award winners checked for a Lever page per run; the rest wait for the next run.
+  leverMaxNewPerRun: Number(process.env.LEVER_MAX_NEW_PER_RUN || 100),
+  // A job counts as engineering if one of these is in its title, department or function.
+  engineeringKeywords: list(process.env.ENGINEERING_KEYWORDS, DEFAULT_ENGINEERING_KEYWORDS),
+  // Tech stacks looked for in new job titles + descriptions.
+  stacks: list(process.env.STACKS, DEFAULT_STACKS),
+  // Spike: open engineering jobs >= SPIKE_RATIO x baseline AND up by >= SPIKE_MIN_INCREASE.
+  // Baseline = median of the company's last BASELINE_DAYS daily snapshots (needs 3+).
+  spikeRatio: Number(process.env.SPIKE_RATIO || 1.5),
+  spikeMinIncrease: Number(process.env.SPIKE_MIN_INCREASE || 3),
+  baselineDays: Number(process.env.BASELINE_DAYS || 14),
+  // Burst: this many new engineering jobs in the last 7 days.
+  burstMinNewEng: Number(process.env.BURST_MIN_NEW_ENG || 5),
+  // Stack spike: this many new jobs mentioning the same stack in the last 7 days.
+  stackSpikeMin: Number(process.env.STACK_SPIKE_MIN || 3),
 };

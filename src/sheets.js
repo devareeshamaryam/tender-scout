@@ -43,6 +43,12 @@ async function readColumn({ api, sheetId, sheetTab }, col) {
   return (res.data.values || []).map((r) => r[0]).filter(Boolean);
 }
 
+// All rows below the header, as arrays of cell strings.
+async function readRows({ api, sheetId, sheetTab }) {
+  const res = await api.values.get({ spreadsheetId: sheetId, range: `'${sheetTab}'!A2:Z` });
+  return res.data.values || [];
+}
+
 async function appendRows({ api, sheetId, sheetTab }, rows) {
   if (!rows.length) return;
   await api.values.append({
@@ -54,4 +60,4 @@ async function appendRows({ api, sheetId, sheetTab }, rows) {
   });
 }
 
-module.exports = { connect, openTab, readColumn, appendRows };
+module.exports = { connect, openTab, readColumn, readRows, appendRows };
