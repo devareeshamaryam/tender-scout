@@ -15,7 +15,7 @@ const { sleep } = require('./http');
 const HEADERS = [
   'ATS', 'Slug', 'Company', 'Status', 'Website', 'Source ID', 'First Found', 'Found Via',
   'Open Jobs', 'Open Engineering', 'New Engineering Jobs (7 days)', 'Hiring Trend', 'Top Stacks',
-  'Last Spike', 'Last Checked', 'Engineering History',
+  'Last Spike', 'Last Checked', 'Engineering History', 'Last Proposal',
 ];
 const COL = Object.fromEntries(HEADERS.map((h, i) => [h, i]));
 const TRACKED = 'tracked';
@@ -123,7 +123,12 @@ async function update(conn, today, { dryRun = false, awardsConn = null } = {}) {
   }
   const knownIds = new Set(rows.map((r) => `${r[0]}:${r[5]}`));
   const tracked = new Map(rows.filter((r) => r[COL.Status] === TRACKED).map((r) => [`${r[0]}:${r[1]}`, {
-    ats: r[0], slug: r[1], company: r[2], history: parseHistory(r[COL['Engineering History']]), lastSpike: r[COL['Last Spike']] || '',
+    ats: r[0],
+    slug: r[1],
+    company: r[2],
+    history: parseHistory(r[COL['Engineering History']]),
+    lastSpike: r[COL['Last Spike']] || '',
+    lastProposal: r[COL['Last Proposal']] || '',
   }]));
   const slugsOf = (ats) => new Set([...tracked.values()].filter((t) => t.ats === ats).map((t) => t.slug));
   const limit = (n) => (dryRun ? Math.min(n, 10) : n);
@@ -185,7 +190,7 @@ async function update(conn, today, { dryRun = false, awardsConn = null } = {}) {
 }
 
 // Writes today's numbers into each polled company's row. stats: Map "ATS:slug" ->
-// { openJobs, openEng, newEng7, trend, topStacks, spiked, history: [{ date, openEng }] }
+// { openJobs, openEng, newEng7, trend, topStacks, spiked, proposed, history: [{ date, openEng }] }
 async function saveStats(conn, stats, today) {
   const tab = { ...conn, sheetTab: config.hiringCompaniesTab };
   const rows = (await sheets.readRows(tab)).map((r) => HEADERS.map((_, i) => r[i] ?? ''));
@@ -198,6 +203,7 @@ async function saveStats(conn, stats, today) {
     r[COL['Hiring Trend']] = s.trend;
     r[COL['Top Stacks']] = s.topStacks;
     if (s.spiked) r[COL['Last Spike']] = today;
+    if (s.proposed) r[COL['Last Proposal']] = today;
     r[COL['Last Checked']] = today;
     r[COL['Engineering History']] = formatHistory(s.history);
   }
@@ -205,3 +211,4 @@ async function saveStats(conn, stats, today) {
 }
 
 module.exports = { update, saveStats, HEADERS };
+

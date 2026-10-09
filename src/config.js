@@ -77,6 +77,16 @@ module.exports = {
     'head of engineering', 'engineering manager', 'cto',
   ].join(',')),
 
+  // Proposal drafts: Claude writes a tailored email per signal and posts it to Slack for
+  // review. Nothing is sent automatically. Skipped when ANTHROPIC_API_KEY is not set.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  proposalsPerRun: Number(process.env.PROPOSALS_PER_RUN || 20),
+  // A hiring-spike company gets at most one draft in this many days.
+  proposalCooldownDays: Number(process.env.PROPOSAL_COOLDOWN_DAYS || 30),
+  // Who the emails are from and what they offer - Claude only claims what is written here.
+  proposalSenderProfile: process.env.PROPOSAL_SENDER_PROFILE
+    || 'Ateca (ateca.co.uk), a UK technology recruitment and resourcing partner. We help companies hire software engineers, data and cloud specialists on permanent and contract terms, and can stand up delivery teams quickly when a new contract starts.',
+
   // Hiring velocity: daily poll of public job feeds (Workable, Lever) of every company found.
   // Its tabs live in their own spreadsheet, optionally with their own service account;
   // both fall back to the tender sheet/key.

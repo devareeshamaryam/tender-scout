@@ -89,6 +89,21 @@ npm run hiring:dry-run        # search + up to 10 new companies, writes nothing:
 npm run hiring                # real run: sheet + Slack
 ```
 
+## Proposal drafts (Claude, optional)
+
+When a signal fires, TenderScout drafts one tailored outreach email for the likely hiring manager and posts it to Slack. **Nothing is emailed automatically.** A person reviews each draft and decides whether to send it. Human approval is deliberate: PECR (UK), PDPA (Singapore) and PDPO (Hong Kong) allow targeted, relevant B2B outreach with an easy opt-out, while automated bulk sending gets domains blacklisted.
+
+| Signal | Contact | Where |
+|---|---|---|
+| New contract award (one draft per new winner, biggest first) | The hiring manager Apollo found for that winner, if any | `npm start` |
+| Company ramping up hiring (spike / burst / stack) | Apollo lookup of the best-ranked `APOLLO_TITLES` person (1 credit for the company + 1 for the contact) | `npm run hiring` |
+
+- **Model:** Claude Opus 5.5 (`claude-opus-5-5`) via the official `@anthropic-ai/sdk`, returning `{subject, body}` as structured JSON. Server-side refusal fallback is on.
+- **Drafts reference only facts from the signal** (contract title, buyer, value; or engineering roles before → now, new jobs, stacks). Claude is told never to invent clients or results, and only claims what `PROPOSAL_SENDER_PROFILE` says you offer. **Set that profile to your real offering.**
+- **Every draft ends with an opt-out line**, is 90–150 words, and has one low-pressure call to action.
+- **Limits:** at most `PROPOSALS_PER_RUN` (20) drafts per job run. A ramping-up company gets at most one draft every `PROPOSAL_COOLDOWN_DAYS` (30), recorded in the **Last Proposal** column of Hiring Companies. The first tender run (initial load) drafts nothing.
+- **Skipped entirely when `ANTHROPIC_API_KEY` is not set.** Without Apollo, drafts are still written and the Slack message says "No contact found".
+
 ## Code
 
 ```
@@ -107,6 +122,8 @@ src/
   filter.js                   keyword / CPV matching
   fx.js                       approximate currency → GBP rates
   apollo.js                   Apollo company/people search + enrichment
+  proposals.js                Claude drafts one tailored proposal (subject + body) per signal
+  outreach.js                 signal → Apollo contact → Claude draft → Slack (capped per run)
   sheets.js                   Google Sheets helpers
   slack.js                    Slack message
   http.js                     request helper (retries rate limits and network errors)

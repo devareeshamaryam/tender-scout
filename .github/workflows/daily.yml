@@ -22,6 +22,9 @@ jobs:
           SHEET_ID: ${{ secrets.SHEET_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           APOLLO_API_KEY: ${{ secrets.APOLLO_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PROPOSALS_PER_RUN: ${{ vars.PROPOSALS_PER_RUN }}
+          PROPOSAL_SENDER_PROFILE: ${{ vars.PROPOSAL_SENDER_PROFILE }}
           KEYWORDS: ${{ vars.KEYWORDS }}
           CPV_PREFIXES: ${{ vars.CPV_PREFIXES }}
           AWARD_LOOKBACK_DAYS: ${{ vars.AWARD_LOOKBACK_DAYS }}
@@ -64,3 +67,10 @@ jobs:
           BASELINE_DAYS: ${{ vars.BASELINE_DAYS }}
           BURST_MIN_NEW_ENG: ${{ vars.BURST_MIN_NEW_ENG }}
           STACK_SPIKE_MIN: ${{ vars.STACK_SPIKE_MIN }}
+          # Proposal drafts for ramping-up companies (Apollo contact + Claude draft, posted to Slack).
+          APOLLO_API_KEY: ${{ secrets.APOLLO_API_KEY }}
+          APOLLO_TITLES: ${{ vars.APOLLO_TITLES }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PROPOSALS_PER_RUN: ${{ vars.PROPOSALS_PER_RUN }}
+          PROPOSAL_COOLDOWN_DAYS: ${{ vars.PROPOSAL_COOLDOWN_DAYS }}
+          PROPOSAL_SENDER_PROFILE: ${{ vars.PROPOSAL_SENDER_PROFILE }}

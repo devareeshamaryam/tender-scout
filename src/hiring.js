@@ -1,6 +1,7 @@
 // TenderScout hiring velocity: which companies are ramping up engineering hiring.
 // Find hiring companies (Workable, Lever) -> their job feeds -> classify jobs -> Google Sheet
-// (companies, jobs, daily snapshots, spikes) -> spike / burst / stack rules -> Slack summary.
+// (companies, jobs) -> spike / burst / stack rules -> Slack summary
+// -> (optional) Apollo hiring manager + Claude-drafted proposal per ramping-up company, to Slack.
 
 const config = require('./config');
 const workable = require('./sources/workable');
@@ -11,6 +12,7 @@ const { detect, daysAgo } = require('./velocity');
 const { sleep } = require('./http');
 const sheets = require('./sheets');
 const slack = require('./slack');
+const outreach = require('./outreach');
 
 // Job feed per ATS (the "ATS" column in the sheet).
 const SOURCES = Object.fromEntries([workable, lever].map((s) => [s.name, s]));
@@ -42,7 +44,12 @@ async function fetchAll(tracked) {
     try {
       const feed = await source.fetchJobs(t.slug);
       companies.push({
-        ...feed, ats: t.ats, company: t.company || feed.company, careersUrl: source.careersUrl(t.slug), history: t.history || [],
+        ...feed,
+        ats: t.ats,
+        company: t.company || feed.company,
+        careersUrl: source.careersUrl(t.slug),
+        history: t.history || [],
+        lastProposal: t.lastProposal || '',
       });
     } catch (err) {
       if (/ 404:/.test(err.message)) {
@@ -131,7 +138,7 @@ async function track(conn, companies, today) {
     const openEng = c.jobs.filter((j) => j.engineering).length;
     const recent = [...(recentNew.get(key) || []), ...fresh.map((j) => ({ ...j, firstSeen: today }))];
     const alert = detect({ today, openEng, history: c.history, recentNew: recent }, config);
-    if (alert) alerts.push({ ats: c.ats, company: c.company, slug: c.slug, careersUrl: c.careersUrl, ...alert });
+    if (alert) alerts.push({ key, ats: c.ats, company: c.company, slug: c.slug, careersUrl: c.careersUrl, lastProposal: c.lastProposal, ...alert });
 
     stats.set(key, {
       openJobs: c.jobs.length,
@@ -146,10 +153,22 @@ async function track(conn, companies, today) {
   }
 
   await sheets.appendRows(jobsTab, newJobRows);
-  await companiesFinder.saveStats(conn, stats, today);
   alerts.sort((a, b) => (b.newEng + b.openEng - (b.baseline ?? b.openEng)) - (a.newEng + a.openEng - (a.baseline ?? a.openEng)));
   console.log(`Hiring: ${newJobs} new jobs, ${baselined} companies baselined, ${alerts.length} alerts`);
-  return { alerts, newJobs, baselined, firstRun: companies.every((c) => !c.history.length) };
+  // stats are saved by main() once the proposal drafts are known.
+  return { alerts, stats, newJobs, baselined, firstRun: companies.every((c) => !c.history.length) };
+}
+
+// One proposal draft per ramping-up company, at most once per PROPOSAL_COOLDOWN_DAYS.
+async function draftProposals(alerts, stats, today) {
+  const since = daysAgo(today, config.proposalCooldownDays);
+  const signals = alerts
+    .filter((a) => !a.lastProposal || a.lastProposal < since)
+    .map((alert) => ({ kind: 'hiring', company: alert.company, alert, lookup: true }));
+  if (!signals.length) return null;
+  const drafts = await outreach.run(signals);
+  for (const d of drafts?.drafted || []) stats.get(d.signal.alert.key).proposed = true;
+  return drafts;
 }
 
 async function main() {
@@ -195,7 +214,15 @@ async function main() {
     sheetUrl: `https://docs.google.com/spreadsheets/d/${config.hiringSheetId}`,
   }));
 
-  if (errors.length) process.exitCode = 1;
+  let drafts = null;
+  try {
+    drafts = await draftProposals(result.alerts, result.stats, today);
+    if (drafts?.errors.length) await slack.post(config.slackWebhookUrl, `⚠️ Proposal drafts: ${drafts.errors.join('; ')}`);
+  } finally {
+    await companiesFinder.saveStats(conn, result.stats, today);
+  }
+
+  if (errors.length || drafts?.errors.length) process.exitCode = 1;
 }
 
 main().catch(async (err) => {

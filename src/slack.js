@@ -70,6 +70,27 @@ function buildHiringReport({ date, alerts, firstRun, baselined, newJobs, polled,
   return lines.join('\n');
 }
 
+// One proposal draft per message, so each can be reviewed (and copied) on its own.
+function buildProposal({ signal, contact, proposal }) {
+  const why = signal.kind === 'award'
+    ? `🏆 *${escape(signal.company)}* won <${signal.award.url}|${escape(signal.award.title.slice(0, 100))}> – ${escape(signal.award.buyer)} – ${gbp(signal.award.valueGbp)}`
+    : `📈 *<${signal.alert.careersUrl}|${escape(signal.company)}>* (${signal.alert.ats}) – ${signal.alert.baseline != null ? `engineering roles ${signal.alert.baseline} → ${signal.alert.openEng}` : `${signal.alert.openEng} open engineering roles`}${signal.alert.newEng ? ` · ${signal.alert.newEng} new in 7 days` : ''}`;
+  const to = contact
+    ? [
+      `*${escape(contact.name || 'Unknown name')}* – ${escape(contact.title || '')}`,
+      contact.email ? `${contact.email}${contact.emailStatus ? ` (${contact.emailStatus})` : ''}` : 'no email',
+      contact.linkedin ? `<${contact.linkedin}|LinkedIn>` : '',
+    ].filter(Boolean).join(' – ')
+    : '_No contact found – find the hiring manager before sending_';
+  return [
+    '✍️ *Proposal draft – review before sending (nothing has been sent)*',
+    why,
+    `*To:* ${to}`,
+    `*Subject:* ${escape(proposal.subject)}`,
+    proposal.body.split('\n').map((line) => `> ${escape(line)}`).join('\n'),
+  ].join('\n');
+}
+
 async function post(webhookUrl, text) {
   if (!webhookUrl) {
     console.log('SLACK_WEBHOOK_URL not set, message would be:\n' + text);
@@ -83,4 +104,4 @@ async function post(webhookUrl, text) {
   if (!res.ok) throw new Error(`Slack ${res.status}: ${await res.text()}`);
 }
 
-module.exports = { buildReport, buildHiringReport, post };
+module.exports = { buildReport, buildHiringReport, buildProposal, post };
